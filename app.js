@@ -7,7 +7,7 @@ function renderNav() {
   return `
     <nav class="nav">
       <div class="nav-logo" onclick="navigate('home')">
-        ${svgIcon('leaf', 20, 'var(--brown2)')} Flour &amp; Bloom
+        ${svgIcon('leaf', 20, 'var(--brown2)')} Cupcake
       </div>
       <div class="nav-links">
         <button class="nav-link${p==='home'?' active':''}" onclick="navigate('home')">${svgIcon('home',16)} Home</button>
@@ -79,7 +79,7 @@ function attachCardEvents(root) {
   // Click food card body → item detail
   root.querySelectorAll('.food-card').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('.food-card-add')) return; // handled separately
+      if (e.target.closest('.food-card-add')) return;
       const id = parseInt(card.dataset.id);
       const item = MENU_ITEMS.find(i => i.id === id);
       if (item) {
