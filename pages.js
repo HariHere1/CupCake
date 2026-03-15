@@ -38,7 +38,6 @@ function renderSteps(active) {
 }
 
 /* ══ HOME ═══════════════════════════════════════════════════════════════════ */
-
 function renderHome() {
   const featured = MENU_ITEMS.filter(i => FEATURED_IDS.includes(i.id));
   return `
@@ -66,7 +65,7 @@ function renderHome() {
           <h2 class="section-title" style="text-align:center;margin-bottom:32px">How It Works</h2>
           <div class="how-grid">
             <div class="how-card"><div class="how-num">01</div><h3 class="how-title">Browse &amp; Order</h3><p class="how-desc">Choose from our freshly baked selection, available daily.</p></div>
-            <div class="how-card"><div class="how-num">02</div><h3 class="how-title">Pick a Time</h3><p class="how-desc">Select a convenient 10-minute pickup slot that suits you.</p></div>
+            <div class="how-card"><div class="how-num">02</div><h3 class="how-title">Pick a Time</h3><p class="how-desc">Enter any pickup time within bakery hours that suits you.</p></div>
             <div class="how-card"><div class="how-num">03</div><h3 class="how-title">We Prepare</h3><p class="how-desc">We'll have everything perfectly fresh and ready for you.</p></div>
             <div class="how-card"><div class="how-num">04</div><h3 class="how-title">Just Pick Up</h3><p class="how-desc">Skip the queue entirely — grab your order and go.</p></div>
           </div>
@@ -76,7 +75,6 @@ function renderHome() {
 }
 
 /* ══ MENU ═══════════════════════════════════════════════════════════════════ */
-
 function renderMenu() {
   const filtered = MENU_ITEMS.filter(item => {
     const catOk  = State.activeCategory === 'All' || item.category === State.activeCategory;
@@ -95,7 +93,7 @@ function renderMenu() {
         <div class="section">
           <input id="menu-search" class="search-input" type="search" placeholder="Search items…"
             value="${State.searchQuery}" oninput="handleMenuSearch(this.value)">
-          <div class="cat-tabs" id="cat-tabs">
+          <div class="cat-tabs">
             ${CATEGORIES.map(c => `
               <button class="cat-tab${State.activeCategory===c?' active':''}"
                 onclick="handleCatChange('${c}')">${c}</button>`).join('')}
@@ -134,7 +132,6 @@ function refreshMenuGrid() {
 }
 
 /* ══ ITEM DETAIL ════════════════════════════════════════════════════════════ */
-
 function renderItem() {
   const item = State.selectedItem;
   if (!item) { navigate('menu'); return ''; }
@@ -184,7 +181,6 @@ function addItemToCart() {
 }
 
 /* ══ CART ═══════════════════════════════════════════════════════════════════ */
-
 function renderCart() {
   if (!State.cart.length) return `
     <div class="page fade-in"><div class="container">
@@ -197,11 +193,10 @@ function renderCart() {
     </div></div>`;
 
   const sub = State.cartSubtotal(), tax = State.cartTax(), total = State.cartTotal();
-
-  // Show pickup reset notice if a time was previously selected but is now invalid
-  const pickupNotice = State.pickupTime
+  const pickupChip = State.pickupTime
     ? `<div style="background:var(--cream2);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:8px;margin-bottom:16px">
-        ${svgIcon('clock',14,'var(--brown-light)')} Pickup time: <strong>${slotLabel(State.pickupTime)}</strong>
+        ${svgIcon('clock',14,'var(--brown-light)')} Pickup time: <strong>${timeKeyToAmPm(State.pickupTime)}</strong>
+        <button onclick="State.pickupTime=null;navigate('cart')" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 6px;border-radius:4px" title="Clear pickup time">✕</button>
        </div>`
     : '';
 
@@ -215,7 +210,7 @@ function renderCart() {
       </div>
       <div class="container">
         <div class="section" style="max-width:680px;margin:0 auto">
-          ${pickupNotice}
+          ${pickupChip}
           ${State.cart.map(item => `
             <div class="cart-item">
               <img class="cart-item-img" src="${item.image}" alt="${item.name}">
@@ -258,7 +253,6 @@ function updateCartQty(id, delta) {
   revalidatePickupTime();
   navigate('cart');
 }
-
 function removeCartItem(id) {
   State.cart = State.cart.filter(i => i.id !== id);
   updateCartBadge();
@@ -266,75 +260,132 @@ function removeCartItem(id) {
   navigate('cart');
 }
 
-/* ══ SCHEDULE ═══════════════════════════════════════════════════════════════ */
-
+/* ══ SCHEDULE — CUSTOM TIME INPUT ══════════════════════════════════════════ */
 function renderSchedule() {
-  const slots = getAvailableSlots(State.maxPrepTime());
+  const prep     = State.maxPrepTime();
+  const minKey   = earliestPickupKey(prep);          // "HH:MM" earliest valid
+  const initVal  = State.pickupTime || minKey;       // pre-fill with last chosen or earliest
+  const check    = State.pickupTime ? isPickupTimeValid(State.pickupTime, prep) : null;
+
   return `
     <div class="page fade-in">
       <div class="page-title-bar">
         <div class="container" style="padding:0">
           <div class="page-title">Choose Pickup Time</div>
-          <div class="page-subtitle">Bakery open 8:00 AM – 8:00 PM · Slots every 10 minutes</div>
+          <div class="page-subtitle">Bakery open 8:00 AM – 8:00 PM</div>
         </div>
       </div>
       <div class="container">
-        <div class="section" style="max-width:700px;margin:0 auto;padding-bottom:120px">
+        <div class="section" style="padding-bottom:120px">
           ${renderSteps(2)}
-          <div class="prep-info-box">
-            ${svgIcon('clock',16,'var(--brown-light)')}
-            <div>
-              <strong>Prep time required: ${State.maxPrepTime()} min</strong><br>
-              <span style="color:var(--text3)">Greyed slots are too early. <strong>Full</strong> slots have reached the ${SLOT_CAPACITY}-item limit.</span>
+
+          <div class="time-picker-card">
+            <div class="time-picker-title">When would you like to pick up?</div>
+            <div class="time-picker-sub">
+              Enter any time between 8:00 AM and 8:00 PM.<br>
+              Your order needs <strong>${prep} min</strong> prep — earliest available: <strong>${timeKeyToAmPm(minKey)}</strong>
             </div>
+
+            <!-- Time range visual bar -->
+            <div class="time-range-bar">
+              <div class="time-range-dot"></div>
+              <span>Opens <strong>8:00 AM</strong></span>
+              <div style="flex:1;height:2px;background:linear-gradient(to right,var(--sage),var(--brown-light));border-radius:2px;margin:0 6px"></div>
+              <span>Closes <strong>8:00 PM</strong></span>
+              <div class="time-range-dot warn"></div>
+            </div>
+
+            <!-- Native time input -->
+            <div class="time-input-wrap">
+              <input
+                id="pickup-time-input"
+                class="time-input"
+                type="time"
+                value="${initVal}"
+                min="08:00"
+                max="20:00"
+                oninput="handleTimeInput(this.value)"
+                onchange="handleTimeInput(this.value)"
+              >
+            </div>
+
+            <div class="time-input-hint">
+              ${svgIcon('clock',13,'var(--text3)')}
+              <span>You can enter times like 10:01, 4:37, 16:45</span>
+            </div>
+
+            <!-- Live validation feedback -->
+            <div id="time-feedback" class="${check ? (check.ok ? 'time-valid-feedback ok' : 'time-valid-feedback err') : 'time-valid-feedback empty'}">
+              ${check
+                ? (check.ok
+                    ? `${svgIcon('check',15,'#065F46')} Pickup time confirmed: <strong>${timeKeyToAmPm(State.pickupTime)}</strong>`
+                    : `${svgIcon('xCircle',15,'#991B1B')} ${check.reason}`)
+                : `${svgIcon('clock',15,'var(--text3)')} Enter a time above to continue`}
+            </div>
+
+            <!-- Confirm button -->
+            <button
+              id="confirm-time-btn"
+              class="btn btn-primary btn-lg btn-full"
+              onclick="confirmPickupTime()"
+              ${(check && check.ok) ? '' : 'disabled'}
+            >
+              ${svgIcon('check',16)} Confirm Pickup at ${(check && check.ok) ? timeKeyToAmPm(State.pickupTime) : '—'}
+            </button>
           </div>
-          <div class="slots-grid">
-            ${slots.map(slot => {
-              let cls = 'slot';
-              if (slot.full)            cls += ' slot-full';
-              else if (slot.tooEarly)   cls += ' slot-early';
-              if (State.selectedSlot === slot.key) cls += ' slot-selected';
-              const dis = (slot.full || slot.tooEarly) ? 'disabled' : '';
-              const tag = slot.full     ? `<div class="slot-tag">Full</div>`
-                        : slot.tooEarly ? `<div class="slot-tag" style="color:var(--text3)">Early</div>`
-                        : '';
-              return `<button class="${cls}" ${dis} onclick="selectSlot('${slot.key}')">
-                <div class="slot-time">${slot.label}</div>
-                <div class="slot-cap">${slot.used}/${SLOT_CAPACITY}</div>
-                ${tag}
-              </button>`;
-            }).join('')}
-          </div>
-          <button id="confirm-slot-btn" class="btn btn-primary btn-lg btn-full" style="margin-top:28px"
-            ${State.selectedSlot ? '' : 'disabled'} onclick="confirmSlot()">
-            Confirm${State.selectedSlot ? ': ' + slotLabel(State.selectedSlot) : ' a time slot'} →
-          </button>
         </div>
       </div>
     </div>`;
 }
 
-function selectSlot(key) {
-  State.selectedSlot = State.selectedSlot === key ? null : key;
-  navigate('schedule');
+/* Live time input handler — validates and updates feedback without re-rendering */
+function handleTimeInput(val) {
+  if (!val) return;
+
+  const prep    = State.maxPrepTime();
+  const check   = isPickupTimeValid(val, prep);
+  const feedback = document.getElementById('time-feedback');
+  const btn      = document.getElementById('confirm-time-btn');
+
+  if (check.ok) {
+    State.pickupTime = val;
+    if (feedback) {
+      feedback.className = 'time-valid-feedback ok';
+      feedback.innerHTML = `${svgIcon('check',15,'#065F46')} Pickup time confirmed: <strong>${timeKeyToAmPm(val)}</strong>`;
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `${svgIcon('check',16)} Confirm Pickup at ${timeKeyToAmPm(val)}`;
+    }
+  } else {
+    State.pickupTime = null;
+    if (feedback) {
+      feedback.className = 'time-valid-feedback err';
+      feedback.innerHTML = `${svgIcon('xCircle',15,'#991B1B')} ${check.reason}`;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${svgIcon('check',16)} Confirm Pickup at —`;
+    }
+  }
 }
 
-function confirmSlot() {
-  if (!State.selectedSlot) return;
-  // Validate one more time before confirming (time may have passed)
-  const check = isPickupTimeValid(State.selectedSlot, State.maxPrepTime());
+function confirmPickupTime() {
+  const input = document.getElementById('pickup-time-input');
+  const val   = input ? input.value : State.pickupTime;
+  if (!val) { showToast('Please enter a pickup time.', 'warning'); return; }
+
+  // Final validation before proceeding
+  const check = isPickupTimeValid(val, State.maxPrepTime());
   if (!check.ok) {
     showToast(check.reason, 'warning');
-    State.selectedSlot = null;
-    navigate('schedule');
     return;
   }
-  State.pickupTime = State.selectedSlot;
+  State.pickupTime = val;
   navigate('checkout');
 }
 
 /* ══ CHECKOUT ═══════════════════════════════════════════════════════════════ */
-
 function renderCheckout() {
   const sub = State.cartSubtotal(), tax = State.cartTax(), total = State.cartTotal();
   const hasPickup = !!State.pickupTime;
@@ -368,19 +419,10 @@ function renderCheckout() {
                   <input class="form-input" type="text" placeholder="1234 5678 9012 3456" maxlength="19">
                 </div>
                 <div class="card-row">
-                  <div class="form-group">
-                    <label class="form-label">Expiry</label>
-                    <input class="form-input" type="text" placeholder="MM / YY" maxlength="7">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">CVV</label>
-                    <input class="form-input" type="password" placeholder="•••" maxlength="4">
-                  </div>
+                  <div class="form-group"><label class="form-label">Expiry</label><input class="form-input" type="text" placeholder="MM / YY" maxlength="7"></div>
+                  <div class="form-group"><label class="form-label">CVV</label><input class="form-input" type="password" placeholder="•••" maxlength="4"></div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label">Name on Card</label>
-                  <input class="form-input" type="text" placeholder="Full name">
-                </div>
+                <div class="form-group"><label class="form-label">Name on Card</label><input class="form-input" type="text" placeholder="Full name"></div>
               </div>
             </div>
 
@@ -397,24 +439,22 @@ function renderCheckout() {
               <div class="summary-row total"><span>Total</span><span style="color:var(--brown2)">${formatPrice(total)}</span></div>
               <hr class="divider">
 
-              <!-- Pickup time chip -->
               <div style="display:flex;align-items:center;gap:10px;background:${hasPickup?'var(--white)':'#FEF9F0'};border:1.5px solid ${hasPickup?'var(--beige)':'#F59E0B'};border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
-                ${svgIcon('clock',16, hasPickup ? 'var(--brown-light)' : '#F59E0B')}
+                ${svgIcon('clock',16, hasPickup?'var(--brown-light)':'#F59E0B')}
                 <div>
                   <div style="font-size:12px;color:var(--text3)">Pickup Time</div>
                   <div style="font-weight:700;font-size:15px;color:${hasPickup?'var(--text)':'#92400E'}">
-                    ${hasPickup ? slotLabel(State.pickupTime) : 'Not selected'}
+                    ${hasPickup ? timeKeyToAmPm(State.pickupTime) : 'Not selected'}
                   </div>
                 </div>
                 ${!hasPickup ? `<button onclick="navigate('schedule')" style="margin-left:auto;background:var(--brown2);color:white;border:none;border-radius:var(--radius-pill);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">Select</button>` : ''}
               </div>
 
-              ${!hasPickup ? `<div class="no-pickup-warning">${svgIcon('warn',14,'#92400E')} Please select a pickup time to continue.</div>` : ''}
+              ${!hasPickup ? `<div class="no-pickup-warning">${svgIcon('warn',14,'#92400E')} A pickup time is required to place your order.</div>` : ''}
 
-              <button class="btn btn-primary btn-full" onclick="placeOrder()" ${!hasPickup ? 'disabled' : ''}>
+              <button class="btn btn-primary btn-full" onclick="placeOrder()" ${!hasPickup?'disabled':''}>
                 ${svgIcon('check',16)} Place Order
               </button>
-              ${hasPickup ? '' : `<p style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Go to Schedule to choose a time</p>`}
             </div>
           </div>
         </div>
@@ -431,26 +471,22 @@ function selectPayment(id) {
   if (cf) cf.style.display = id === 'card' ? 'grid' : 'none';
 }
 
-/* ══ PLACE ORDER — VALIDATION + ANIMATION ═══════════════════════════════════ */
-
+/* ══ PLACE ORDER ════════════════════════════════════════════════════════════ */
 function placeOrder() {
-  // Guard: must have pickup time
   if (!State.pickupTime) {
     showToast('Please select a pickup time before placing your order.', 'warning');
     return;
   }
 
-  // Re-validate pickup time right before placing
+  // Final re-validate
   const check = isPickupTimeValid(State.pickupTime, State.maxPrepTime());
   if (!check.ok) {
     showToast(check.reason, 'warning');
-    State.pickupTime   = null;
-    State.selectedSlot = null;
+    State.pickupTime = null;
     navigate('schedule');
     return;
   }
 
-  // 1. Commit state
   const orderId    = genOrderId();
   const totalItems = State.cart.reduce((s,i) => s + i.qty, 0);
 
@@ -462,10 +498,10 @@ function placeOrder() {
     status:     'Preparing'
   };
 
-  // 2. Update slot usage (real confirmed orders only)
-  incrementSlotUsage(State.pickupTime, totalItems);
+  // Track usage (real confirmed orders only)
+  State.orderUsage[State.pickupTime] = (State.orderUsage[State.pickupTime] || 0) + totalItems;
 
-  // 3. Add to admin orders and persist
+  // Push to admin orders immediately + persist
   const adminEntry = {
     id:       orderId,
     items:    State.cart.map(i => ({ name: i.name, qty: i.qty })),
@@ -476,131 +512,77 @@ function placeOrder() {
   State.adminOrders.unshift(adminEntry);
   saveOrdersToStorage();
 
-  // 4. Clear cart
+  // Clear cart
   State.cart         = [];
-  State.selectedSlot = null;
   State.pickupTime   = null;
   updateCartBadge();
 
-  // 5. Build ticket HTML
+  // Animation overlay
   const itemsHTML = State.confirmedOrder.items.map(i =>
-    `<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px;align-items:center">
+    `<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px">
        <span style="color:#6B5744">${i.name} ×${i.qty}</span>
-       <span style="font-weight:600;color:#2C1F0E">${formatPrice(i.price * i.qty)}</span>
+       <span style="font-weight:600;color:#2C1F0E">${formatPrice(i.price*i.qty)}</span>
      </div>`
   ).join('');
-  const pickupTimeLabel = slotLabel(State.confirmedOrder.pickupTime);
+  const ptLabel = timeKeyToAmPm(State.confirmedOrder.pickupTime);
 
-  // 6. Inject overlay
   const overlay = document.createElement('div');
   overlay.id = 'confirm-overlay';
-  overlay.style.cssText = [
-    'position:fixed','inset:0','z-index:2000',
-    'background:rgba(250,247,242,0.96)',
-    'backdrop-filter:blur(8px)','-webkit-backdrop-filter:blur(8px)',
-    'display:flex','align-items:center','justify-content:center',
-    'flex-direction:column','padding:24px',
-    'opacity:0','transition:opacity 0.3s ease'
-  ].join(';');
-
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(250,247,242,0.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px;opacity:0;transition:opacity 0.3s ease';
   overlay.innerHTML = `
     <div id="check-wrap" style="margin-bottom:28px;display:flex;align-items:center;justify-content:center">
-      <svg id="check-svg" width="100" height="100" viewBox="0 0 100 100">
-        <circle id="check-circle" cx="50" cy="50" r="44"
-          fill="none" stroke="#7FA86C" stroke-width="4"
-          stroke-dasharray="276.46" stroke-dashoffset="276.46"
-          stroke-linecap="round" transform="rotate(-90 50 50)"/>
-        <path id="check-mark" d="M28 52 L44 68 L72 34"
-          fill="none" stroke="#7FA86C" stroke-width="5"
-          stroke-linecap="round" stroke-linejoin="round"
-          stroke-dasharray="60" stroke-dashoffset="60"/>
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <circle id="check-circle" cx="50" cy="50" r="44" fill="none" stroke="#7FA86C" stroke-width="4"
+          stroke-dasharray="276.46" stroke-dashoffset="276.46" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+        <path id="check-mark" d="M28 52 L44 68 L72 34" fill="none" stroke="#7FA86C" stroke-width="5"
+          stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="60" stroke-dashoffset="60"/>
       </svg>
     </div>
-    <div id="confirm-ticket" style="
-      background:white;border-radius:20px;
-      box-shadow:0 8px 40px rgba(44,31,14,0.14);
-      padding:32px 28px;max-width:380px;width:100%;text-align:center;
-      transform:translateY(40px);opacity:0;
-      transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1),opacity 0.5s ease">
+    <div id="confirm-ticket" style="background:white;border-radius:20px;box-shadow:0 8px 40px rgba(44,31,14,0.14);padding:32px 28px;max-width:380px;width:100%;text-align:center;transform:translateY(40px);opacity:0;transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1),opacity 0.5s ease">
       <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9C8470;margin-bottom:6px">Order Confirmed</div>
       <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#6B4C30;margin-bottom:20px">${orderId}</div>
       <div style="text-align:left;margin-bottom:16px">${itemsHTML}</div>
       <hr style="border:none;border-top:1px solid #EDE5D8;margin:14px 0">
-      <div id="pickup-time-highlight" style="
-        background:#F5F0E8;border-radius:12px;padding:14px 18px;
-        display:flex;align-items:center;gap:10px;justify-content:center;
-        transform:scale(0.9);
-        transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.4s ease,background 0.4s ease">
+      <div id="pickup-time-highlight" style="background:#F5F0E8;border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:10px;justify-content:center;transform:scale(0.9);transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.4s ease,background 0.4s ease">
         <span style="font-size:20px">🕐</span>
         <div style="text-align:left">
           <div style="font-size:11px;color:#9C8470;margin-bottom:2px">Pickup Time</div>
-          <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:18px;color:#6B4C30">${pickupTimeLabel}</div>
+          <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:18px;color:#6B4C30">${ptLabel}</div>
         </div>
       </div>
     </div>`;
 
   document.body.appendChild(overlay);
 
-  // Animation sequence
   requestAnimationFrame(() => requestAnimationFrame(() => { overlay.style.opacity = '1'; }));
-
+  setTimeout(() => { const c=document.getElementById('check-circle'); if(c){c.style.transition='stroke-dashoffset 0.6s cubic-bezier(0.65,0,0.35,1)';c.style.strokeDashoffset='0';} }, 50);
+  setTimeout(() => { const m=document.getElementById('check-mark');   if(m){m.style.transition='stroke-dashoffset 0.45s cubic-bezier(0.65,0,0.35,1)';m.style.strokeDashoffset='0';} }, 500);
+  setTimeout(() => { const w=document.getElementById('check-wrap');   if(w){w.style.transition='transform 0.18s ease';w.style.transform='scale(1.08)';setTimeout(()=>{w.style.transform='scale(1)';},180);} }, 900);
+  setTimeout(() => { const t=document.getElementById('confirm-ticket'); if(t){t.getBoundingClientRect();t.style.transform='translateY(0)';t.style.opacity='1';} }, 1000);
   setTimeout(() => {
-    const c = document.getElementById('check-circle');
-    if (c) { c.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(0.65,0,0.35,1)'; c.style.strokeDashoffset = '0'; }
-  }, 50);
-
-  setTimeout(() => {
-    const m = document.getElementById('check-mark');
-    if (m) { m.style.transition = 'stroke-dashoffset 0.45s cubic-bezier(0.65,0,0.35,1)'; m.style.strokeDashoffset = '0'; }
-  }, 500);
-
-  setTimeout(() => {
-    const w = document.getElementById('check-wrap');
-    if (w) { w.style.transition = 'transform 0.18s ease'; w.style.transform = 'scale(1.08)'; setTimeout(() => { w.style.transform = 'scale(1)'; }, 180); }
-  }, 900);
-
-  setTimeout(() => {
-    const ticket = document.getElementById('confirm-ticket');
-    if (ticket) { ticket.getBoundingClientRect(); ticket.style.transform = 'translateY(0)'; ticket.style.opacity = '1'; }
-  }, 1000);
-
-  setTimeout(() => {
-    const pth = document.getElementById('pickup-time-highlight');
-    if (pth) {
-      pth.style.transform  = 'scale(1.06)';
-      pth.style.boxShadow  = '0 0 0 3px rgba(107,76,48,0.25), 0 4px 16px rgba(107,76,48,0.14)';
-      pth.style.background = '#EDE5D8';
-      setTimeout(() => {
-        pth.style.transform  = 'scale(1)';
-        pth.style.boxShadow  = 'none';
-        pth.style.background = '#F5F0E8';
-      }, 420);
-    }
+    const pth=document.getElementById('pickup-time-highlight');
+    if(pth){pth.style.transform='scale(1.06)';pth.style.boxShadow='0 0 0 3px rgba(107,76,48,0.25),0 4px 16px rgba(107,76,48,0.14)';pth.style.background='#EDE5D8';
+    setTimeout(()=>{pth.style.transform='scale(1)';pth.style.boxShadow='none';pth.style.background='#F5F0E8';},420);}
   }, 1550);
-
   setTimeout(() => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-primary';
-    btn.style.cssText = 'margin-top:22px;opacity:0;transition:opacity 0.35s ease';
-    btn.textContent = 'View My Order';
+    const btn=document.createElement('button');
+    btn.className='btn btn-primary';btn.style.cssText='margin-top:22px;opacity:0;transition:opacity 0.35s ease';btn.textContent='View My Order';
     overlay.appendChild(btn);
-    requestAnimationFrame(() => requestAnimationFrame(() => { btn.style.opacity = '1'; }));
-    btn.addEventListener('click', dismissOverlay);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{btn.style.opacity='1';}));
+    btn.addEventListener('click',dismissOverlay);
   }, 2100);
 
   const autoTimer = setTimeout(dismissOverlay, 5500);
-
   function dismissOverlay() {
     clearTimeout(autoTimer);
-    const ov = document.getElementById('confirm-overlay');
-    if (!ov) return;
-    ov.style.opacity = '0';
-    setTimeout(() => { ov.remove(); navigate('confirmation'); }, 320);
+    const ov=document.getElementById('confirm-overlay');
+    if(!ov)return;
+    ov.style.opacity='0';
+    setTimeout(()=>{ov.remove();navigate('confirmation');},320);
   }
 }
 
-/* ══ CONFIRMATION PAGE ══════════════════════════════════════════════════════ */
-
+/* ══ CONFIRMATION ═══════════════════════════════════════════════════════════ */
 function renderConfirmation() {
   const o = State.confirmedOrder;
   if (!o) { navigate('home'); return ''; }
@@ -613,18 +595,9 @@ function renderConfirmation() {
           <p class="confirm-sub">Your order will be ready at the selected pickup time. See you soon!</p>
           <div class="order-id-badge">${o.id}</div>
           <div class="confirm-meta">
-            <div class="confirm-meta-item">
-              <div class="confirm-meta-label">Pickup Time</div>
-              <div class="confirm-meta-value">${o.pickupTime ? slotLabel(o.pickupTime) : '—'}</div>
-            </div>
-            <div class="confirm-meta-item">
-              <div class="confirm-meta-label">Status</div>
-              ${renderBadge(o.status)}
-            </div>
-            <div class="confirm-meta-item">
-              <div class="confirm-meta-label">Total</div>
-              <div class="confirm-meta-value">${formatPrice(o.total)}</div>
-            </div>
+            <div class="confirm-meta-item"><div class="confirm-meta-label">Pickup Time</div><div class="confirm-meta-value">${timeKeyToAmPm(o.pickupTime)}</div></div>
+            <div class="confirm-meta-item"><div class="confirm-meta-label">Status</div>${renderBadge(o.status)}</div>
+            <div class="confirm-meta-item"><div class="confirm-meta-label">Total</div><div class="confirm-meta-value">${formatPrice(o.total)}</div></div>
           </div>
           <div class="confirm-note">🧁 We're already preparing your order. It'll be fresh and waiting for you at the counter!</div>
           <div class="confirm-actions">
@@ -637,26 +610,21 @@ function renderConfirmation() {
 }
 
 /* ══ ORDERS ═════════════════════════════════════════════════════════════════ */
-
 function renderOrders() {
   if (!State.user) return `
     <div class="page fade-in"><div class="container">
-      <div class="empty-state">
-        <div class="empty-icon">🔐</div>
-        <div class="empty-title">Sign In Required</div>
-        <div class="empty-sub">Please log in to view your orders.</div>
-        <button class="btn btn-primary" onclick="navigate('auth')">Login</button>
-      </div>
+      <div class="empty-state"><div class="empty-icon">🔐</div><div class="empty-title">Sign In Required</div>
+      <div class="empty-sub">Please log in to view your orders.</div>
+      <button class="btn btn-primary" onclick="navigate('auth')">Login</button></div>
     </div></div>`;
 
-  // Build display orders: confirmed + mock history
   let all = [...MOCK_ORDERS];
   if (State.confirmedOrder) {
     all = [{
       id:         State.confirmedOrder.id,
       items:      State.confirmedOrder.items,
       total:      State.confirmedOrder.total,
-      pickupTime: State.confirmedOrder.pickupTime ? slotLabel(State.confirmedOrder.pickupTime) : '—',
+      pickupTime: timeKeyToAmPm(State.confirmedOrder.pickupTime),
       date:       'Today',
       status:     State.confirmedOrder.status
     }, ...all];
@@ -684,9 +652,7 @@ function renderOrders() {
 
   return `
     <div class="page fade-in">
-      <div class="page-title-bar">
-        <div class="container" style="padding:0"><div class="page-title">My Orders</div></div>
-      </div>
+      <div class="page-title-bar"><div class="container" style="padding:0"><div class="page-title">My Orders</div></div></div>
       <div class="container">
         <div class="section" style="max-width:680px;margin:0 auto">
           ${sec('Upcoming Orders', upcoming)}
@@ -697,7 +663,6 @@ function renderOrders() {
 }
 
 /* ══ AUTH ═══════════════════════════════════════════════════════════════════ */
-
 function renderAuth() {
   const isLogin = State.authMode === 'login';
   return `
@@ -712,22 +677,10 @@ function renderAuth() {
             <button class="tab-toggle-btn${isLogin?' active':''}" onclick="State.authMode='login';navigate('auth')">Sign In</button>
             <button class="tab-toggle-btn${!isLogin?' active':''}" onclick="State.authMode='signup';navigate('auth')">Sign Up</button>
           </div>
-          ${!isLogin ? `
-            <div class="form-group">
-              <label class="form-label">Full Name</label>
-              <input class="form-input" id="auth-name" type="text" placeholder="Jane Smith">
-            </div>` : ''}
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input class="form-input" id="auth-email" type="email" placeholder="hello@example.com">
-          </div>
-          <div class="form-group" style="margin-bottom:24px">
-            <label class="form-label">Password</label>
-            <input class="form-input" id="auth-pass" type="password" placeholder="••••••••">
-          </div>
-          <button class="btn btn-primary btn-full" onclick="submitAuth()">
-            ${isLogin ? 'Sign In' : 'Create Account'}
-          </button>
+          ${!isLogin ? `<div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="auth-name" type="text" placeholder="Jane Smith"></div>` : ''}
+          <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="auth-email" type="email" placeholder="hello@example.com"></div>
+          <div class="form-group" style="margin-bottom:24px"><label class="form-label">Password</label><input class="form-input" id="auth-pass" type="password" placeholder="••••••••"></div>
+          <button class="btn btn-primary btn-full" onclick="submitAuth()">${isLogin ? 'Sign In' : 'Create Account'}</button>
           <p style="text-align:center;font-size:12px;color:var(--text3);margin-top:14px">
             ${isLogin ? 'Demo: any email. Use <strong>admin@…</strong> for staff dashboard.' : 'By signing up you agree to our terms.'}
           </p>
@@ -747,39 +700,26 @@ function submitAuth() {
 }
 
 /* ══ ADMIN ══════════════════════════════════════════════════════════════════ */
-
 function renderAdmin() {
   if (!State.user?.isAdmin) return `
     <div class="page fade-in"><div class="container">
-      <div class="empty-state">
-        <div class="empty-icon">🔒</div>
-        <div class="empty-title">Admin Access Required</div>
-        <div class="empty-sub">Log in with an admin account (any email starting with <strong>admin@</strong>).</div>
-        <button class="btn btn-primary" onclick="navigate('auth')">Login</button>
-      </div>
+      <div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Admin Access Required</div>
+      <div class="empty-sub">Log in with any email starting with <strong>admin@</strong>.</div>
+      <button class="btn btn-primary" onclick="navigate('auth')">Login</button></div>
     </div></div>`;
 
   const orders = State.adminOrders;
 
   if (!orders.length) return `
     <div class="page fade-in">
-      <div class="admin-header">
-        <div class="admin-header-title">🧁 Staff Dashboard</div>
-        <div class="admin-header-sub">Cupcake — Live Orders</div>
-      </div>
-      <div class="container">
-        <div class="empty-state">
-          <div class="empty-icon">📋</div>
-          <div class="empty-title">No orders yet</div>
-          <div class="empty-sub">Orders will appear here once customers place them.</div>
-        </div>
-      </div>
+      <div class="admin-header"><div class="admin-header-title">🧁 Staff Dashboard</div><div class="admin-header-sub">Cupcake — Live Orders</div></div>
+      <div class="container"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No orders yet</div><div class="empty-sub">Orders will appear here once customers place them.</div></div></div>
     </div>`;
 
   const stats = [
     { label:'Active Orders',    value: orders.filter(o=>o.status!=='Completed').length },
     { label:'Ready for Pickup', value: orders.filter(o=>o.status==='Ready').length },
-    { label:'Completed Today',  value: orders.filter(o=>o.status==='Completed').length },
+    { label:'Completed',        value: orders.filter(o=>o.status==='Completed').length },
     { label:'Items in Prep',    value: orders.filter(o=>o.status==='Preparing').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0) }
   ];
 
@@ -788,47 +728,33 @@ function renderAdmin() {
 
   return `
     <div class="page fade-in">
-      <div class="admin-header">
-        <div class="admin-header-title">🧁 Staff Dashboard</div>
-        <div class="admin-header-sub">Cupcake — Live Orders</div>
-      </div>
+      <div class="admin-header"><div class="admin-header-title">🧁 Staff Dashboard</div><div class="admin-header-sub">Cupcake — Live Orders</div></div>
       <div class="container">
         <div class="section">
           <div class="admin-stats">
             ${stats.map(s=>`<div class="stat-card"><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join('')}
           </div>
-          <h3 style="font-size:22px;margin-bottom:24px">Orders by Pickup Slot</h3>
-          ${Object.entries(grouped).sort().map(([slot,slotOrders]) => {
-            const used = slotOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
-            const cap  = State.slotUsage[slot] || used;
-            const pct  = Math.min(100, Math.round((cap / SLOT_CAPACITY) * 100));
-            return `
-              <div class="slot-group">
-                <div class="slot-group-header">
-                  <span>${slotLabel(slot)} — ${slotOrders.length} order${slotOrders.length!==1?'s':''}</span>
-                  <div class="cap-bar-wrap">
-                    <span class="cap-label">${cap}/${SLOT_CAPACITY}</span>
-                    <div class="cap-bar"><div class="cap-fill${pct>=80?' high':''}" style="width:${pct}%"></div></div>
+          <h3 style="font-size:22px;margin-bottom:24px">Orders by Pickup Time</h3>
+          ${Object.entries(grouped).sort().map(([slot, slotOrders]) => `
+            <div class="slot-group">
+              <div class="slot-group-header">
+                <span>${timeKeyToAmPm(slot)} — ${slotOrders.length} order${slotOrders.length!==1?'s':''}</span>
+                <span style="font-size:13px;color:var(--text3)">${(State.orderUsage[slot]||0)} item${(State.orderUsage[slot]||0)!==1?'s':''} total</span>
+              </div>
+              ${slotOrders.map(o=>`
+                <div class="admin-order-card" id="ao-${o.id}">
+                  <div class="admin-order-top">
+                    <div><span class="admin-order-id">${o.id}</span><span class="admin-order-customer">${o.customer}</span></div>
+                    <select class="status-select" onchange="updateAdminStatus('${o.id}',this.value)">
+                      <option${o.status==='Preparing'?' selected':''}>Preparing</option>
+                      <option${o.status==='Ready'?' selected':''}>Ready</option>
+                      <option${o.status==='Completed'?' selected':''}>Completed</option>
+                    </select>
                   </div>
-                </div>
-                ${slotOrders.map(o=>`
-                  <div class="admin-order-card" id="ao-${o.id}">
-                    <div class="admin-order-top">
-                      <div>
-                        <span class="admin-order-id">${o.id}</span>
-                        <span class="admin-order-customer">${o.customer}</span>
-                      </div>
-                      <select class="status-select" onchange="updateAdminStatus('${o.id}',this.value)">
-                        <option${o.status==='Preparing'?' selected':''}>Preparing</option>
-                        <option${o.status==='Ready'?' selected':''}>Ready</option>
-                        <option${o.status==='Completed'?' selected':''}>Completed</option>
-                      </select>
-                    </div>
-                    <div class="admin-order-items-text">${o.items.map(i=>`${i.name} ×${i.qty}`).join(' · ')}</div>
-                    <div style="margin-top:10px" id="ao-badge-${o.id}">${renderBadge(o.status)}</div>
-                  </div>`).join('')}
-              </div>`;
-          }).join('')}
+                  <div class="admin-order-items-text">${o.items.map(i=>`${i.name} ×${i.qty}`).join(' · ')}</div>
+                  <div style="margin-top:10px" id="ao-badge-${o.id}">${renderBadge(o.status)}</div>
+                </div>`).join('')}
+            </div>`).join('')}
         </div>
       </div>
     </div>`;
