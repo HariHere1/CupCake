@@ -1,4 +1,4 @@
-/* ══ SHARED COMPONENTS ════════════════════════════════════════════════════════ */
+/* ══ SHARED COMPONENTS ══════════════════════════════════════════════════════ */
 
 function renderFoodCard(item) {
   return `
@@ -37,7 +37,7 @@ function renderSteps(active) {
   </div>`;
 }
 
-/* ══ HOME ═════════════════════════════════════════════════════════════════════ */
+/* ══ HOME ═══════════════════════════════════════════════════════════════════ */
 
 function renderHome() {
   const featured = MENU_ITEMS.filter(i => FEATURED_IDS.includes(i.id));
@@ -54,7 +54,6 @@ function renderHome() {
           </div>
         </div>
       </div>
-
       <div class="container">
         <div class="section">
           <div class="section-header">
@@ -63,7 +62,6 @@ function renderHome() {
           </div>
           <div class="food-grid">${featured.map(renderFoodCard).join('')}</div>
         </div>
-
         <div class="section" style="border-top:1px solid var(--beige)">
           <h2 class="section-title" style="text-align:center;margin-bottom:32px">How It Works</h2>
           <div class="how-grid">
@@ -77,7 +75,7 @@ function renderHome() {
     </div>`;
 }
 
-/* ══ MENU ═════════════════════════════════════════════════════════════════════ */
+/* ══ MENU ═══════════════════════════════════════════════════════════════════ */
 
 function renderMenu() {
   const filtered = MENU_ITEMS.filter(item => {
@@ -112,10 +110,7 @@ function renderMenu() {
     </div>`;
 }
 
-function handleMenuSearch(val) {
-  State.searchQuery = val;
-  refreshMenuGrid();
-}
+function handleMenuSearch(val) { State.searchQuery = val; refreshMenuGrid(); }
 function handleCatChange(cat) {
   State.activeCategory = cat;
   State.searchQuery = '';
@@ -138,7 +133,7 @@ function refreshMenuGrid() {
   attachCardEvents(grid);
 }
 
-/* ══ ITEM DETAIL ══════════════════════════════════════════════════════════════ */
+/* ══ ITEM DETAIL ════════════════════════════════════════════════════════════ */
 
 function renderItem() {
   const item = State.selectedItem;
@@ -188,7 +183,7 @@ function addItemToCart() {
   navigate('cart');
 }
 
-/* ══ CART ═════════════════════════════════════════════════════════════════════ */
+/* ══ CART ═══════════════════════════════════════════════════════════════════ */
 
 function renderCart() {
   if (!State.cart.length) return `
@@ -202,6 +197,14 @@ function renderCart() {
     </div></div>`;
 
   const sub = State.cartSubtotal(), tax = State.cartTax(), total = State.cartTotal();
+
+  // Show pickup reset notice if a time was previously selected but is now invalid
+  const pickupNotice = State.pickupTime
+    ? `<div style="background:var(--cream2);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        ${svgIcon('clock',14,'var(--brown-light)')} Pickup time: <strong>${slotLabel(State.pickupTime)}</strong>
+       </div>`
+    : '';
+
   return `
     <div class="page fade-in">
       <div class="page-title-bar">
@@ -212,6 +215,7 @@ function renderCart() {
       </div>
       <div class="container">
         <div class="section" style="max-width:680px;margin:0 auto">
+          ${pickupNotice}
           ${State.cart.map(item => `
             <div class="cart-item">
               <img class="cart-item-img" src="${item.image}" alt="${item.name}">
@@ -235,7 +239,7 @@ function renderCart() {
           </div>
           <button class="btn btn-primary btn-lg btn-full" style="margin-top:20px"
             onclick="${State.user ? "navigate('schedule')" : "navigate('auth')"}">
-            Choose Pickup Time →
+            ${State.pickupTime ? 'Change Pickup Time →' : 'Choose Pickup Time →'}
           </button>
           <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="navigate('menu')">
             Continue Shopping
@@ -251,15 +255,18 @@ function updateCartQty(id, delta) {
   item.qty += delta;
   if (item.qty <= 0) State.cart = State.cart.filter(i => i.id !== id);
   updateCartBadge();
-  navigate('cart');
-}
-function removeCartItem(id) {
-  State.cart = State.cart.filter(i => i.id !== id);
-  updateCartBadge();
+  revalidatePickupTime();
   navigate('cart');
 }
 
-/* ══ SCHEDULE ═════════════════════════════════════════════════════════════════ */
+function removeCartItem(id) {
+  State.cart = State.cart.filter(i => i.id !== id);
+  updateCartBadge();
+  revalidatePickupTime();
+  navigate('cart');
+}
+
+/* ══ SCHEDULE ═══════════════════════════════════════════════════════════════ */
 
 function renderSchedule() {
   const slots = getAvailableSlots(State.maxPrepTime());
@@ -272,22 +279,24 @@ function renderSchedule() {
         </div>
       </div>
       <div class="container">
-        <div class="section" style="max-width:700px;margin:0 auto">
+        <div class="section" style="max-width:700px;margin:0 auto;padding-bottom:120px">
           ${renderSteps(2)}
           <div class="prep-info-box">
             ${svgIcon('clock',16,'var(--brown-light)')}
-            <div><strong>Earliest slot based on your order:</strong> ${State.maxPrepTime()} min prep required.<br>
-            <span style="color:var(--text3)">Greyed slots are too early. Slots marked <strong>Full</strong> have reached capacity (${SLOT_CAPACITY} items).</span></div>
+            <div>
+              <strong>Prep time required: ${State.maxPrepTime()} min</strong><br>
+              <span style="color:var(--text3)">Greyed slots are too early. <strong>Full</strong> slots have reached the ${SLOT_CAPACITY}-item limit.</span>
+            </div>
           </div>
           <div class="slots-grid">
             ${slots.map(slot => {
               let cls = 'slot';
-              if (slot.full)   cls += ' slot-full';
-              else if (slot.tooEarly) cls += ' slot-early';
+              if (slot.full)            cls += ' slot-full';
+              else if (slot.tooEarly)   cls += ' slot-early';
               if (State.selectedSlot === slot.key) cls += ' slot-selected';
               const dis = (slot.full || slot.tooEarly) ? 'disabled' : '';
-              const tag = slot.full ? `<div class="slot-tag">Full</div>`
-                        : slot.tooEarly ? `<div class="slot-tag" style="color:var(--text3)">Too early</div>`
+              const tag = slot.full     ? `<div class="slot-tag">Full</div>`
+                        : slot.tooEarly ? `<div class="slot-tag" style="color:var(--text3)">Early</div>`
                         : '';
               return `<button class="${cls}" ${dis} onclick="selectSlot('${slot.key}')">
                 <div class="slot-time">${slot.label}</div>
@@ -296,9 +305,9 @@ function renderSchedule() {
               </button>`;
             }).join('')}
           </div>
-          <button id="confirm-slot-btn" class="btn btn-primary btn-lg btn-full" style="margin-top:32px"
+          <button id="confirm-slot-btn" class="btn btn-primary btn-lg btn-full" style="margin-top:28px"
             ${State.selectedSlot ? '' : 'disabled'} onclick="confirmSlot()">
-            Confirm Time${State.selectedSlot ? ': ' + slotLabel(State.selectedSlot) : ''} →
+            Confirm${State.selectedSlot ? ': ' + slotLabel(State.selectedSlot) : ' a time slot'} →
           </button>
         </div>
       </div>
@@ -309,21 +318,33 @@ function selectSlot(key) {
   State.selectedSlot = State.selectedSlot === key ? null : key;
   navigate('schedule');
 }
+
 function confirmSlot() {
   if (!State.selectedSlot) return;
+  // Validate one more time before confirming (time may have passed)
+  const check = isPickupTimeValid(State.selectedSlot, State.maxPrepTime());
+  if (!check.ok) {
+    showToast(check.reason, 'warning');
+    State.selectedSlot = null;
+    navigate('schedule');
+    return;
+  }
   State.pickupTime = State.selectedSlot;
   navigate('checkout');
 }
 
-/* ══ CHECKOUT ═════════════════════════════════════════════════════════════════ */
+/* ══ CHECKOUT ═══════════════════════════════════════════════════════════════ */
 
 function renderCheckout() {
   const sub = State.cartSubtotal(), tax = State.cartTax(), total = State.cartTotal();
+  const hasPickup = !!State.pickupTime;
+
   const payOptions = [
     { id:'card',   label:'Credit / Debit Card', emoji:'💳' },
     { id:'apple',  label:'Apple Pay',            emoji:'🍎' },
     { id:'google', label:'Google Pay',           emoji:'🔵' }
   ];
+
   return `
     <div class="page fade-in">
       <div class="page-title-bar">
@@ -375,16 +396,25 @@ function renderCheckout() {
               <div class="summary-row"><span>Tax (8%)</span><span>${formatPrice(tax)}</span></div>
               <div class="summary-row total"><span>Total</span><span style="color:var(--brown2)">${formatPrice(total)}</span></div>
               <hr class="divider">
-              <div style="display:flex;align-items:center;gap:10px;background:var(--white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:18px">
-                ${svgIcon('clock',16,'var(--brown-light)')}
+
+              <!-- Pickup time chip -->
+              <div style="display:flex;align-items:center;gap:10px;background:${hasPickup?'var(--white)':'#FEF9F0'};border:1.5px solid ${hasPickup?'var(--beige)':'#F59E0B'};border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
+                ${svgIcon('clock',16, hasPickup ? 'var(--brown-light)' : '#F59E0B')}
                 <div>
                   <div style="font-size:12px;color:var(--text3)">Pickup Time</div>
-                  <div style="font-weight:700;font-size:15px">${State.pickupTime ? slotLabel(State.pickupTime) : '—'}</div>
+                  <div style="font-weight:700;font-size:15px;color:${hasPickup?'var(--text)':'#92400E'}">
+                    ${hasPickup ? slotLabel(State.pickupTime) : 'Not selected'}
+                  </div>
                 </div>
+                ${!hasPickup ? `<button onclick="navigate('schedule')" style="margin-left:auto;background:var(--brown2);color:white;border:none;border-radius:var(--radius-pill);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">Select</button>` : ''}
               </div>
-              <button class="btn btn-primary btn-full" onclick="placeOrder()">
+
+              ${!hasPickup ? `<div class="no-pickup-warning">${svgIcon('warn',14,'#92400E')} Please select a pickup time to continue.</div>` : ''}
+
+              <button class="btn btn-primary btn-full" onclick="placeOrder()" ${!hasPickup ? 'disabled' : ''}>
                 ${svgIcon('check',16)} Place Order
               </button>
+              ${hasPickup ? '' : `<p style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Go to Schedule to choose a time</p>`}
             </div>
           </div>
         </div>
@@ -395,39 +425,73 @@ function renderCheckout() {
 function selectPayment(id) {
   State.selectedPayment = id;
   document.querySelectorAll('.payment-option').forEach(el => {
-    const on = el.getAttribute('onclick').includes(`'${id}'`);
-    el.classList.toggle('selected', on);
+    el.classList.toggle('selected', el.getAttribute('onclick').includes(`'${id}'`));
   });
   const cf = document.getElementById('card-fields');
   if (cf) cf.style.display = id === 'card' ? 'grid' : 'none';
 }
 
-/* ══ PLACE ORDER — FULL ANIMATION ════════════════════════════════════════════ */
+/* ══ PLACE ORDER — VALIDATION + ANIMATION ═══════════════════════════════════ */
 
 function placeOrder() {
+  // Guard: must have pickup time
+  if (!State.pickupTime) {
+    showToast('Please select a pickup time before placing your order.', 'warning');
+    return;
+  }
+
+  // Re-validate pickup time right before placing
+  const check = isPickupTimeValid(State.pickupTime, State.maxPrepTime());
+  if (!check.ok) {
+    showToast(check.reason, 'warning');
+    State.pickupTime   = null;
+    State.selectedSlot = null;
+    navigate('schedule');
+    return;
+  }
+
   // 1. Commit state
-  const orderId = genOrderId();
+  const orderId    = genOrderId();
+  const totalItems = State.cart.reduce((s,i) => s + i.qty, 0);
+
   State.confirmedOrder = {
-    id: orderId,
-    items: [...State.cart],
-    total: State.cartTotal(),
+    id:         orderId,
+    items:      [...State.cart],
+    total:      State.cartTotal(),
     pickupTime: State.pickupTime,
-    status: 'Preparing'
+    status:     'Preparing'
   };
-  State.cart = [];
+
+  // 2. Update slot usage (real confirmed orders only)
+  incrementSlotUsage(State.pickupTime, totalItems);
+
+  // 3. Add to admin orders and persist
+  const adminEntry = {
+    id:       orderId,
+    items:    State.cart.map(i => ({ name: i.name, qty: i.qty })),
+    slot:     State.pickupTime,
+    customer: State.user ? State.user.name : 'Guest',
+    status:   'Preparing'
+  };
+  State.adminOrders.unshift(adminEntry);
+  saveOrdersToStorage();
+
+  // 4. Clear cart
+  State.cart         = [];
   State.selectedSlot = null;
+  State.pickupTime   = null;
   updateCartBadge();
 
-  // 2. Build ticket HTML
+  // 5. Build ticket HTML
   const itemsHTML = State.confirmedOrder.items.map(i =>
     `<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px;align-items:center">
        <span style="color:#6B5744">${i.name} ×${i.qty}</span>
        <span style="font-weight:600;color:#2C1F0E">${formatPrice(i.price * i.qty)}</span>
      </div>`
   ).join('');
-  const pickupTimeLabel = State.confirmedOrder.pickupTime ? slotLabel(State.confirmedOrder.pickupTime) : '—';
+  const pickupTimeLabel = slotLabel(State.confirmedOrder.pickupTime);
 
-  // 3. Inject overlay into body
+  // 6. Inject overlay
   const overlay = document.createElement('div');
   overlay.id = 'confirm-overlay';
   overlay.style.cssText = [
@@ -452,7 +516,6 @@ function placeOrder() {
           stroke-dasharray="60" stroke-dashoffset="60"/>
       </svg>
     </div>
-
     <div id="confirm-ticket" style="
       background:white;border-radius:20px;
       box-shadow:0 8px 40px rgba(44,31,14,0.14);
@@ -467,7 +530,7 @@ function placeOrder() {
         background:#F5F0E8;border-radius:12px;padding:14px 18px;
         display:flex;align-items:center;gap:10px;justify-content:center;
         transform:scale(0.9);
-        transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.4s ease">
+        transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.4s ease,background 0.4s ease">
         <span style="font-size:20px">🕐</span>
         <div style="text-align:left">
           <div style="font-size:11px;color:#9C8470;margin-bottom:2px">Pickup Time</div>
@@ -478,52 +541,29 @@ function placeOrder() {
 
   document.body.appendChild(overlay);
 
-  // ── ANIMATION SEQUENCE ────────────────────────────────────────────────────
+  // Animation sequence
+  requestAnimationFrame(() => requestAnimationFrame(() => { overlay.style.opacity = '1'; }));
 
-  // Fade in overlay
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
-  });
-
-  // Phase 1 — Draw circle (50ms → 650ms)
   setTimeout(() => {
     const c = document.getElementById('check-circle');
-    if (c) {
-      c.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(0.65,0,0.35,1)';
-      c.style.strokeDashoffset = '0';
-    }
+    if (c) { c.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(0.65,0,0.35,1)'; c.style.strokeDashoffset = '0'; }
   }, 50);
 
-  // Phase 2 — Draw checkmark (500ms → 950ms)
   setTimeout(() => {
     const m = document.getElementById('check-mark');
-    if (m) {
-      m.style.transition = 'stroke-dashoffset 0.45s cubic-bezier(0.65,0,0.35,1)';
-      m.style.strokeDashoffset = '0';
-    }
+    if (m) { m.style.transition = 'stroke-dashoffset 0.45s cubic-bezier(0.65,0,0.35,1)'; m.style.strokeDashoffset = '0'; }
   }, 500);
 
-  // Phase 3 — Pulse check-wrap
   setTimeout(() => {
     const w = document.getElementById('check-wrap');
-    if (w) {
-      w.style.transition = 'transform 0.18s ease';
-      w.style.transform = 'scale(1.08)';
-      setTimeout(() => { w.style.transform = 'scale(1)'; }, 180);
-    }
+    if (w) { w.style.transition = 'transform 0.18s ease'; w.style.transform = 'scale(1.08)'; setTimeout(() => { w.style.transform = 'scale(1)'; }, 180); }
   }, 900);
 
-  // Phase 4 — Ticket slides up
   setTimeout(() => {
     const ticket = document.getElementById('confirm-ticket');
-    if (ticket) {
-      ticket.getBoundingClientRect(); // force reflow
-      ticket.style.transform = 'translateY(0)';
-      ticket.style.opacity   = '1';
-    }
+    if (ticket) { ticket.getBoundingClientRect(); ticket.style.transform = 'translateY(0)'; ticket.style.opacity = '1'; }
   }, 1000);
 
-  // Phase 5 — Pickup time highlight bounce + glow
   setTimeout(() => {
     const pth = document.getElementById('pickup-time-highlight');
     if (pth) {
@@ -538,21 +578,17 @@ function placeOrder() {
     }
   }, 1550);
 
-  // Phase 6 — Show "View My Order" button
   setTimeout(() => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-primary';
     btn.style.cssText = 'margin-top:22px;opacity:0;transition:opacity 0.35s ease';
     btn.textContent = 'View My Order';
     overlay.appendChild(btn);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => { btn.style.opacity = '1'; });
-    });
+    requestAnimationFrame(() => requestAnimationFrame(() => { btn.style.opacity = '1'; }));
     btn.addEventListener('click', dismissOverlay);
   }, 2100);
 
-  // Auto-dismiss after 5.2s
-  const autoTimer = setTimeout(dismissOverlay, 5200);
+  const autoTimer = setTimeout(dismissOverlay, 5500);
 
   function dismissOverlay() {
     clearTimeout(autoTimer);
@@ -563,7 +599,7 @@ function placeOrder() {
   }
 }
 
-/* ══ CONFIRMATION PAGE ════════════════════════════════════════════════════════ */
+/* ══ CONFIRMATION PAGE ══════════════════════════════════════════════════════ */
 
 function renderConfirmation() {
   const o = State.confirmedOrder;
@@ -600,7 +636,7 @@ function renderConfirmation() {
     </div>`;
 }
 
-/* ══ ORDERS ═══════════════════════════════════════════════════════════════════ */
+/* ══ ORDERS ═════════════════════════════════════════════════════════════════ */
 
 function renderOrders() {
   if (!State.user) return `
@@ -613,6 +649,7 @@ function renderOrders() {
       </div>
     </div></div>`;
 
+  // Build display orders: confirmed + mock history
   let all = [...MOCK_ORDERS];
   if (State.confirmedOrder) {
     all = [{
@@ -659,7 +696,7 @@ function renderOrders() {
     </div>`;
 }
 
-/* ══ AUTH ═════════════════════════════════════════════════════════════════════ */
+/* ══ AUTH ═══════════════════════════════════════════════════════════════════ */
 
 function renderAuth() {
   const isLogin = State.authMode === 'login';
@@ -709,7 +746,7 @@ function submitAuth() {
   navigate('home');
 }
 
-/* ══ ADMIN ════════════════════════════════════════════════════════════════════ */
+/* ══ ADMIN ══════════════════════════════════════════════════════════════════ */
 
 function renderAdmin() {
   if (!State.user?.isAdmin) return `
@@ -723,6 +760,22 @@ function renderAdmin() {
     </div></div>`;
 
   const orders = State.adminOrders;
+
+  if (!orders.length) return `
+    <div class="page fade-in">
+      <div class="admin-header">
+        <div class="admin-header-title">🧁 Staff Dashboard</div>
+        <div class="admin-header-sub">Cupcake — Live Orders</div>
+      </div>
+      <div class="container">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-title">No orders yet</div>
+          <div class="empty-sub">Orders will appear here once customers place them.</div>
+        </div>
+      </div>
+    </div>`;
+
   const stats = [
     { label:'Active Orders',    value: orders.filter(o=>o.status!=='Completed').length },
     { label:'Ready for Pickup', value: orders.filter(o=>o.status==='Ready').length },
@@ -747,20 +800,24 @@ function renderAdmin() {
           <h3 style="font-size:22px;margin-bottom:24px">Orders by Pickup Slot</h3>
           ${Object.entries(grouped).sort().map(([slot,slotOrders]) => {
             const used = slotOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
-            const pct  = Math.min(100, Math.round((used / SLOT_CAPACITY) * 100));
+            const cap  = State.slotUsage[slot] || used;
+            const pct  = Math.min(100, Math.round((cap / SLOT_CAPACITY) * 100));
             return `
               <div class="slot-group">
                 <div class="slot-group-header">
                   <span>${slotLabel(slot)} — ${slotOrders.length} order${slotOrders.length!==1?'s':''}</span>
                   <div class="cap-bar-wrap">
-                    <span class="cap-label">${used}/${SLOT_CAPACITY}</span>
+                    <span class="cap-label">${cap}/${SLOT_CAPACITY}</span>
                     <div class="cap-bar"><div class="cap-fill${pct>=80?' high':''}" style="width:${pct}%"></div></div>
                   </div>
                 </div>
                 ${slotOrders.map(o=>`
                   <div class="admin-order-card" id="ao-${o.id}">
                     <div class="admin-order-top">
-                      <div><span class="admin-order-id">${o.id}</span><span class="admin-order-customer">${o.customer}</span></div>
+                      <div>
+                        <span class="admin-order-id">${o.id}</span>
+                        <span class="admin-order-customer">${o.customer}</span>
+                      </div>
                       <select class="status-select" onchange="updateAdminStatus('${o.id}',this.value)">
                         <option${o.status==='Preparing'?' selected':''}>Preparing</option>
                         <option${o.status==='Ready'?' selected':''}>Ready</option>
@@ -781,6 +838,7 @@ function updateAdminStatus(id, status) {
   const o = State.adminOrders.find(o => o.id === id);
   if (o) {
     o.status = status;
+    saveOrdersToStorage();
     const badge = document.getElementById(`ao-badge-${id}`);
     if (badge) badge.innerHTML = renderBadge(status);
     showToast(`${id} marked as ${status}`, 'success');
