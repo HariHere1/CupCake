@@ -67,38 +67,26 @@ const MENU_ITEMS = [
     ingredients:["Bread flour","Water","Salt","Wild yeast starter"] }
 ];
 
-const CATEGORIES  = ["All","Pastries","Muffins","Cupcakes","Cakes","Cookies","Drinks","Bread"];
+const CATEGORIES   = ["All","Pastries","Muffins","Cupcakes","Cakes","Cookies","Drinks","Bread"];
 const FEATURED_IDS = [1, 3, 5, 9];
 
-/* ── MOCK ORDERS ────────────────────────────────────────────────────────────── */
+/* ── MOCK CUSTOMER ORDERS (display only, no slot usage) ──────────────────── */
 const MOCK_ORDERS = [
-  { id:"BK-2401", items:[{name:"Almond Croissant",qty:2,price:4.50},{name:"Matcha Latte",qty:1,price:5.50}],   total:14.50, pickupTime:"2:30 PM", date:"Today",     status:"Preparing" },
-  { id:"BK-2389", items:[{name:"Cinnamon Roll",qty:1,price:5.00},{name:"Vanilla Latte",qty:2,price:4.75}],      total:14.50, pickupTime:"1:00 PM", date:"Yesterday", status:"Completed" },
-  { id:"BK-2374", items:[{name:"Red Velvet Cake",qty:1,price:7.00}],                                             total:7.00,  pickupTime:"11:30 AM",date:"Mar 10",   status:"Completed" }
+  { id:"BK-2401", items:[{name:"Almond Croissant",qty:2,price:4.50},{name:"Matcha Latte",qty:1,price:5.50}],   total:14.50, pickupTime:"2:30 PM", date:"Yesterday", status:"Completed" },
+  { id:"BK-2389", items:[{name:"Cinnamon Roll",qty:1,price:5.00},{name:"Vanilla Latte",qty:2,price:4.75}],      total:14.50, pickupTime:"1:00 PM", date:"2 days ago",  status:"Completed" }
 ];
 
-/* ── ADMIN ORDERS ───────────────────────────────────────────────────────────── */
-const ADMIN_ORDERS = [
-  { id:"BK-2410", items:[{name:"Almond Croissant",qty:3},{name:"Vanilla Latte",qty:2}],    slot:"14:00", customer:"Emma W.",   status:"Preparing" },
-  { id:"BK-2411", items:[{name:"Cinnamon Roll",qty:2}],                                    slot:"14:00", customer:"James L.",  status:"Ready"     },
-  { id:"BK-2412", items:[{name:"Blueberry Muffin",qty:5},{name:"Matcha Latte",qty:1}],     slot:"14:10", customer:"Sophie K.", status:"Preparing" },
-  { id:"BK-2413", items:[{name:"Strawberry Tart",qty:1}],                                  slot:"14:20", customer:"Tom R.",    status:"Preparing" },
-  { id:"BK-2414", items:[{name:"Hazelnut Macaron",qty:8}],                                 slot:"14:20", customer:"Lily C.",   status:"Ready"     },
-  { id:"BK-2409", items:[{name:"Sourdough Loaf",qty:1}],                                   slot:"13:30", customer:"Mike B.",   status:"Completed" }
-];
-
-/* ── SLOT CAPACITY MAP ───────────────────────────────────────────────────────── */
-function generateSlotCapacities() {
+/* ── SLOT CAPACITY MAP — starts at 0, built from real confirmed orders ──────── */
+// Do NOT pre-fill with random values. All slots start empty.
+// Usage is tracked in State.slotUsage and updated on each confirmed order.
+function buildEmptySlotMap() {
   const caps = {};
   let t = BAKERY_OPEN;
   while (t < BAKERY_CLOSE) {
-    const used = Math.random() < 0.18 ? SLOT_CAPACITY : Math.floor(Math.random() * 7);
     const h = String(Math.floor(t / 60)).padStart(2,'0');
     const m = String(t % 60).padStart(2,'0');
-    caps[`${h}:${m}`] = used;
+    caps[`${h}:${m}`] = 0;
     t += SLOT_INTERVAL;
   }
   return caps;
 }
-
-const SLOT_CAPS = generateSlotCapacities();
